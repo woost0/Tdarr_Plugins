@@ -135,12 +135,13 @@ const details = (): IpluginDetails => ({
   };
 
 // Evaluate a format string for a stream (comma-separated, supports single-quoted literals and property access)
-function evalFormat(format: string, stream: Record<string, unknown>): string {
+function evaluateFormatString(format: string, stream: Record<string, unknown>): string {
   const parts = format.split(',').map((part) => part.trim()).filter(Boolean);
   let out = '';
   for (let i = 0; i < parts.length; i += 1) {
     const p = parts[i];
     let val = '';
+
     if (p === 'disposition.forced') {
       const forced = getNestedProperty(stream, 'disposition.forced');
       if (forced === 1 || forced === '1') {
@@ -154,6 +155,7 @@ function evalFormat(format: string, stream: Record<string, unknown>): string {
       const prop = getNestedProperty(stream, p);
       val = prop == null ? '' : String(prop).toUpperCase();
     }
+    
     if (!val) continue;
     // Only add space if not joining 'x', '(', or ')'
     if (out) {
@@ -172,6 +174,37 @@ function evalFormat(format: string, stream: Record<string, unknown>): string {
   return out.replace(/ +/g, ' ').trim();
 }
 
+// Helper function to get stream title based on type and format
+function getStreamTitle(
+  type: string,
+  stream: Record<string, unknown>,
+  streamType: string,
+  videoFormat: string,
+  audioFormat: string,
+  subtitleFormat: string
+): string {
+  switch (type) {
+    case 'video':
+      if (streamType === 'video' || streamType === 'all') {
+        return evaluateFormatString(videoFormat, stream);
+      }
+      break;
+    case 'audio':
+      if (streamType === 'audio' || streamType === 'all') {
+        return evaluateFormatString(audioFormat, stream);
+      }
+      break;
+    case 'subtitle':
+      if (streamType === 'subtitle' || streamType === 'all') {
+        return evaluateFormatString(subtitleFormat, stream);
+      }
+      break;
+    default:
+      return '';
+  }
+  return '';
+}
+
 const plugin = (args: IpluginInputArgs): IpluginOutputArgs => {
   const lib = require('../../../../../methods/lib')();
   args.inputs = lib.loadDefaultValues(args.inputs, details);
@@ -181,34 +214,29 @@ const plugin = (args: IpluginInputArgs): IpluginOutputArgs => {
   const audioFormat = String(args.inputs.audioFormat);
   const videoFormat = String(args.inputs.videoFormat);
   const subtitleFormat = String(args.inputs.subtitleFormat);
-  const streams: Record<string, unknown>[] = args.variables.ffmpegCommand.streams;
+  const { streams } = args.variables.ffmpegCommand;
   const metadataArgs: string[] = [];
 
   for (let i = 0; i < streams.length; i += 1) {
     const stream = streams[i];
     if ((stream as any).removed) continue;
     const type = (stream as any).codec_type;
-    let title = '';
-    if (
-      streamType === 'all' ||
-      (streamType === 'audio' && type === 'audio') ||
-      (streamType === 'video' && type === 'video') ||
-      (streamType === 'subtitle' && type === 'subtitle')
-    ) {
-      if (type === 'audio') title = evalFormat(audioFormat, stream);
-      else if (type === 'video') title = evalFormat(videoFormat, stream);
-      else if (type === 'subtitle') title = evalFormat(subtitleFormat, stream);
-      if (title) {
-        // Use FFmpeg 7.0+ syntax: -metadata:s:<global_index> title="..."
-        const safeTitle = title.replace(/(["\\])/g, '\\$1');
-        metadataArgs.push(`-metadata:s:${(stream as any).index} title="${safeTitle}"`);
-      }
+
+    const title = getStreamTitle(
+      type, 
+      stream, 
+      streamType, 
+      videoFormat, 
+      audioFormat, 
+      subtitleFormat
+    );
+
+    if (title) {
+      metadataArgs.push(`-metadata:s:${(stream as any).index}`);
+      metadataArgs.push(`title=${title}`);
     }
   }
 
-  if (!args.variables.ffmpegCommand.overallOuputArguments) {
-    args.variables.ffmpegCommand.overallOuputArguments = [];
-  }
   args.variables.ffmpegCommand.overallOuputArguments.push(...metadataArgs);
 
   return {
