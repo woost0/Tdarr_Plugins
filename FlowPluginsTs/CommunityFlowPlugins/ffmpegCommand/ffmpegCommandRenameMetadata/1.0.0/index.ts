@@ -167,6 +167,7 @@ const plugin = (args: IpluginInputArgs): IpluginOutputArgs => {
   streams.forEach((stream: any) => {
     if (stream.removed) return;
     const streamCodecType = String(stream.codec_type);
+    if (!["video", "audio", "subtitle"].includes(streamCodecType)) return;
     const title = getStreamTitle(streamCodecType, stream, String(streamType), formatMap);
     if (title) {
       metadataArgs.push(`-metadata:s:${stream.index}`);
