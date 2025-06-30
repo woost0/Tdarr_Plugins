@@ -66,7 +66,7 @@ const details = (): IpluginDetails => ({
       label: 'Audio Rename Format',
       name: 'audioFormat',
       type: 'string',
-      defaultValue: '{tags.language} {channel_layout}',
+      defaultValue: '{tags.language} {channel_layout} ({codec_name})',
       inputUI: { type: 'text' },
       tooltip:
         `
@@ -176,7 +176,10 @@ const plugin = (args: IpluginInputArgs): IpluginOutputArgs => {
   streams.forEach((stream: Record<string, unknown>) => {
     if (stream.removed) return;
     const streamCodecType = String(stream.codec_type);
-    if (!['video', 'audio', 'subtitle'].includes(streamCodecType)) return;
+    if (!['video', 'audio', 'subtitle'].includes(streamCodecType)) {
+      args.jobLog(`Stream: ${stream.index} (${streamCodecType}) skipped`);
+      return;
+    }
     const title = getStreamTitle(streamCodecType, stream, String(streamType), formatMap, args);
     if (title) {
       metadataArgs.push(`-metadata:s:${stream.index}`);
